@@ -23,6 +23,8 @@ import {
   toCamelCase,
 } from "./utils.js";
 import { scaffoldModel } from "./generators/model/index.js";
+import { scaffoldServerActions } from "./generators/serverActions.js";
+import { scaffoldViewsAndComponentsWithServerActions } from "./generators/views-with-server-actions.js";
 
 function provideInstructions() {
   consola.info(
@@ -30,10 +32,63 @@ function provideInstructions() {
   );
 }
 
+type TResource =
+  | "model"
+  | "api_route"
+  | "trpc_route"
+  | "views_and_components_trpc"
+  | "views_and_components_server_actions"
+  | "server_actions";
+
+type TResourceGroup = "model" | "controller" | "view";
+
 async function askForResourceType() {
   const { packages, orm } = readConfigFile();
 
-  const resourcesRequested = await checkbox({
+  //   const resourcesRequested = (await checkbox({
+  //     message: "Please select the resources you would like to generate:",
+  //     choices: [
+  //       {
+  //         name: "Model",
+  //         value: "model",
+  //         disabled:
+  //           orm === null
+  //             ? "[You need to have an orm installed. Run 'kirimase add']"
+  //             : false,
+  //       },
+  //       { name: "API Route", value: "api_route" },
+  //       {
+  //         name: "TRPC Route",
+  //         value: "trpc_route",
+  //         disabled: !packages.includes("trpc")
+  //           ? "[You need to have trpc installed. Run 'kirimase add']"
+  //           : false,
+  //       },
+  //       {
+  //         name: "Views + Components (with Shadcn UI, requires TRPC route)",
+  //         value: "views_and_components_trpc",
+  //         disabled:
+  //           !packages.includes("shadcn-ui") || !packages.includes("trpc")
+  //             ? "[You need to have shadcn-ui and trpc installed. Run 'kirimase add']"
+  //             : false,
+  //       },
+  //       {
+  //         name: "Server Actions",
+  //         value: "server_actions",
+  //       },
+  //       {
+  //         name: "Views + Components (with server actions)",
+  //         value: "views_and_components_server_actions",
+  //       },
+  //     ],
+  //   })) as TResource[];
+  //   return resourcesRequested;
+  // }
+
+  let resourcesRequested: TResource[] = [];
+  let viewRequested: TResource;
+  let controllersRequested: TResource[];
+  const resourcesTypesRequested = (await checkbox({
     message: "Please select the resources you would like to generate:",
     choices: [
       {
@@ -44,24 +99,87 @@ async function askForResourceType() {
             ? "[You need to have an orm installed. Run 'kirimase add']"
             : false,
       },
-      { name: "API Route", value: "api_route" },
+      { name: "Controller", value: "controller" },
       {
-        name: "TRPC Route",
-        value: "trpc_route",
-        disabled: !packages.includes("trpc")
-          ? "[You need to have trpc installed. Run 'kirimase add']"
+        name: "View",
+        value: "view",
+        disabled: !packages.includes("shadcn-ui")
+          ? "[You need to have shadcn-ui installed. Run 'kirimase add']"
           : false,
       },
-      {
-        name: "Views + Components (with Shadcn UI, requires TRPC route)",
-        value: "views_and_components",
-        disabled:
-          !packages.includes("shadcn-ui") || !packages.includes("trpc")
-            ? "[You need to have shadcn-ui and trpc installed. Run 'kirimase add']"
-            : false,
-      },
     ],
-  });
+  })) as TResourceGroup[];
+
+  if (resourcesTypesRequested.includes("model"))
+    resourcesRequested.push("model");
+
+  if (resourcesTypesRequested.includes("view")) {
+    viewRequested = (await select({
+      message: "Please select the type of view you would like to generate:",
+      choices: [
+        {
+          name: "Server Actions with Optimistic UI",
+          value: "views_and_components_server_actions",
+        },
+        {
+          name: "tRPC with React Hook Form",
+          value: "views_and_components_trpc",
+          disabled: !packages.includes("trpc")
+            ? "[You need to have tRPC installed. Run 'kirimase add']"
+            : false,
+        },
+      ],
+    })) as TResource;
+    if (
+      viewRequested === "views_and_components_server_actions" &&
+      resourcesTypesRequested.includes("controller")
+    )
+      resourcesRequested.push("server_actions");
+    if (
+      viewRequested === "views_and_components_trpc" &&
+      resourcesTypesRequested.includes("controller")
+    )
+      resourcesRequested.push("trpc_route");
+  }
+
+  if (resourcesTypesRequested.includes("controller")) {
+    controllersRequested = (await checkbox({
+      message: viewRequested
+        ? "Please select any additional controllers you would like to generate:"
+        : "Please select which controllers you would like to generate:",
+      choices: [
+        {
+          name: "Server Actions",
+          value: "server_actions",
+          disabled:
+            viewRequested === "views_and_components_server_actions"
+              ? "[Already generated with your selected view]"
+              : false,
+        },
+        {
+          name: "API Route",
+          value: "api_route",
+        },
+        {
+          name: "tRPC",
+          value: "trpc_route",
+          disabled: !packages.includes("trpc")
+            ? "[You need to have tRPC installed. Run 'kirimase add']"
+            : viewRequested === "views_and_components_trpc"
+              ? "[Already generated with your selected view]"
+              : false,
+        },
+      ].filter((item) =>
+        viewRequested
+          ? !viewRequested.includes(item.value.split("_")[0])
+          : item,
+      ),
+    })) as TResource[];
+  }
+
+  viewRequested && resourcesRequested.push(viewRequested);
+  controllersRequested && resourcesRequested.push(...controllersRequested);
+
   return resourcesRequested;
 }
 
@@ -210,8 +328,7 @@ export async function buildSchema() {
 
   const config = readConfigFile();
 
-  const { driver, hasSrc, packages, orm, auth, preferredPackageManager } =
-    config;
+  const { driver, hasSrc, orm, auth } = config;
 
   if (orm !== null) {
     provideInstructions();
@@ -240,8 +357,11 @@ export async function buildSchema() {
     if (resourceType.includes("model")) scaffoldModel(schema, driver, hasSrc);
     if (resourceType.includes("api_route")) scaffoldAPIRoute(schema);
     if (resourceType.includes("trpc_route")) scaffoldTRPCRoute(schema);
-    if (resourceType.includes("views_and_components"))
+    if (resourceType.includes("views_and_components_trpc"))
       scaffoldViewsAndComponents(schema);
+    if (resourceType.includes("server_actions")) scaffoldServerActions(schema);
+    if (resourceType.includes("views_and_components_server_actions"))
+      scaffoldViewsAndComponentsWithServerActions(schema);
   } else {
     consola.warn(
       "You need to have an ORM installed in order to use the scaffold command.",

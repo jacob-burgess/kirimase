@@ -40,7 +40,9 @@ export function capitaliseForZodSchema(input: string): string {
 }
 
 export const formatTableName = (tableName: string) => {
-  const tableNameCamelCase = toCamelCase(tableName);
+  const tableNameCamelCase = tableName.includes("_")
+    ? toCamelCase(tableName)
+    : tableName;
   const tableNameCapitalised =
     tableNameCamelCase.charAt(0).toUpperCase() + tableNameCamelCase.slice(1);
   const tableNameSingularCapitalised =
@@ -119,7 +121,7 @@ const DrizzleToZodMappings: Record<
     date: "string",
     boolean: "boolean",
     float: "number",
-    references: "number",
+    references: "string",
     timestamp: "string",
     // json: "object",
   },
@@ -128,7 +130,7 @@ const DrizzleToZodMappings: Record<
     date: "string",
     boolean: "boolean",
     float: "number",
-    references: "number",
+    references: "string",
     timestamp: "string",
     // json: "object",
   },
@@ -137,7 +139,7 @@ const DrizzleToZodMappings: Record<
     date: "date",
     boolean: "boolean",
     float: "number",
-    references: "number",
+    references: "string",
     timestamp: "date",
     // json: "object",
   },
@@ -193,7 +195,7 @@ export const defaultValueMappings: Record<
     float: "0.0",
     varchar: '""',
     timestamp: '""',
-    references: "0",
+    references: '""',
     Int: "0",
     // Json: '""',
     DateTime: "new Date()",
@@ -215,7 +217,7 @@ export const defaultValueMappings: Record<
     float: "0.0",
     varchar: '""',
     timestamp: '""',
-    references: "0",
+    references: '""',
     Int: "0",
     // Json: '""',
     DateTime: "new Date()",
@@ -237,7 +239,7 @@ export const defaultValueMappings: Record<
     float: "0.0",
     varchar: '""',
     timestamp: "new Date()",
-    references: "0",
+    references: '""',
     Int: "0",
     // Json: '""',
     DateTime: "new Date()",
